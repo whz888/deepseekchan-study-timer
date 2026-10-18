@@ -1,0 +1,15 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+
+# 构建产物（由 build.py 生成在上一级目录）
+../学习计时器.html
+
+# 系统
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 真机截图里带到了桌面其它窗口，不上传
+docs/预览-真实窗口.png
+docs/预览-桌面窗口.png

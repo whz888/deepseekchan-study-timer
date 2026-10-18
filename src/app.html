@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#061530">
+<title>学习计时器</title>
+<script>
+/* 只有从桌面快捷方式（带 #app）进来时才把自己调成小窗口。
+   普通双击 index.html 是在标签页里打开的，不动窗口大小。
+   Edge 已经有进程在跑时 --window-size 会被忽略，所以只能由页面自己调。 */
+(function () {
+  if (location.hash !== '#app') return;
+  function fit() { try { window.resizeTo(500, 760); } catch (e) { } }
+  fit();
+  document.addEventListener('DOMContentLoaded', fit);
+  window.addEventListener('load', fit);
+  setTimeout(fit, 400);
+})();
+</script>
+<style>
+/*__CHARA_CSS__*/
+
+/* ===================== 基础 ===================== */
+:root{
+  --blue:#4D6BFE;
+  --cyan:#6FE3FF;
+  --glass:rgba(14,34,74,.62);
+  --glass-2:rgba(255,255,255,.06);
+  --line:rgba(130,180,255,.22);
+  --line-2:rgba(130,180,255,.4);
+  --txt:#E6F0FF;
+  --txt-2:#9DBBF0;
+  --ok:#25B884;
+  --warn:#F5A623;
+  --radius:14px;
+  --font:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; font-family:var(--font); color:var(--txt); overflow:hidden;
+  background:radial-gradient(120% 80% at 50% 0%, #2C63D8 0%, #143380 34%, #0A1F52 64%, #04122E 100%);
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+}
+button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit}
+input,select{font-family:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(120,170,255,.35); border-radius:8px; border:2px solid transparent; background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* 背景装饰 */
+.sea{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none}
+.sea i{position:absolute; border-radius:50%; filter:blur(60px); opacity:.45; mix-blend-mode:screen}
+.sea i:nth-child(1){width:340px;height:340px;left:-120px;top:-140px;background:radial-gradient(circle,#4D8BFF,transparent 70%)}
+.sea i:nth-child(2){width:300px;height:300px;right:-130px;top:120px;background:radial-gradient(circle,#38D6E8,transparent 70%);opacity:.3}
+.sea i:nth-child(3){width:380px;height:380px;left:40px;bottom:-220px;background:radial-gradient(circle,#7A5CFF,transparent 70%);opacity:.26}
+.bubbles{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.bub{position:absolute;bottom:-40px;border-radius:50%;
+  background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.8), rgba(160,215,255,.14) 60%, rgba(160,215,255,.04));
+  border:1px solid rgba(190,225,255,.3); animation:rise linear infinite}
+@keyframes rise{0%{transform:translateY(0);opacity:0}12%{opacity:.75}90%{opacity:.35}100%{transform:translateY(-105vh);opacity:0}}
+
+/* ===================== 布局 ===================== */
+.app{position:relative; z-index:1; height:100%; display:flex; flex-direction:column; min-width:340px}
+
+/* 顶栏 */
+header{display:flex; align-items:center; gap:8px; padding:10px 14px 6px; flex:0 0 auto}
+.logo{display:flex; align-items:center; gap:8px; font-weight:700; font-size:14px; letter-spacing:.04em; color:#DCEAFF}
+.logo .dot{width:12px;height:12px;border-radius:50% 50% 50% 12%; background:linear-gradient(140deg,#7FB6FF,#3B5BFF);
+  box-shadow:0 0 12px rgba(110,160,255,.9); transform:rotate(-18deg)}
+header .sp{flex:1}
+.icon-btn{width:30px;height:30px;border-radius:10px; background:var(--glass-2); border:1px solid var(--line);
+  color:#CFE4FF; font-size:14px; line-height:1; display:grid; place-items:center; transition:.16s}
+.icon-btn:hover{background:rgba(255,255,255,.16)}
+.icon-btn.off{opacity:.42}
+
+/* 立绘 + 名言 */
+.hero{flex:0 0 auto; display:flex; align-items:flex-end; gap:10px; padding:2px 14px 8px}
+.whale-slot{flex:0 0 108px; width:108px}
+.whale{position:relative; width:100%; aspect-ratio:400/460}
+.whale .chara{position:absolute; inset:0; animation:bob 4.2s ease-in-out infinite}
+.whale .c{position:absolute; inset:0; background-repeat:no-repeat; background-position:center bottom;
+  background-size:contain; opacity:0; transition:opacity .22s ease}
+.whale[data-exp="normal"] .ci-normal,
+.whale[data-exp="happy"] .ci-happy,
+.whale[data-exp="cheer"] .ci-cheer,
+.whale[data-exp="think"] .ci-think,
+.whale[data-exp="sad"] .ci-sad{opacity:1}
+.whale.cheer{animation:cheer .9s cubic-bezier(.2,.9,.3,1)}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes cheer{0%{transform:translateY(0) scale(1)}30%{transform:translateY(-16px) scale(1.05)}
+  60%{transform:translateY(0) scale(.99)}100%{transform:translateY(0)}}
+
+.quote{flex:1; min-width:0; position:relative; border-radius:var(--radius); padding:11px 13px 12px;
+  background:var(--glass); border:1px solid var(--line); backdrop-filter:blur(6px);
+  box-shadow:0 10px 26px rgba(3,12,38,.35); min-height:86px; display:flex; flex-direction:column; justify-content:center;
+  transition:opacity .25s ease; cursor:pointer}
+.quote:hover{border-color:rgba(122,168,255,.42)}
+.quote::before{content:''; position:absolute; left:-6px; bottom:16px; width:12px; height:12px;
+  background:var(--glass); border-left:1px solid var(--line); border-bottom:1px solid var(--line); transform:rotate(45deg)}
+.quote p{margin:0; font-size:12.5px; line-height:1.72; color:#DCEAFF}
+.quote em{display:block; margin-top:6px; font-style:normal; font-size:11px; color:var(--txt-2); text-align:right}
+.quote.fade{opacity:.25}
+
+/* 计时区 */
+.timer{flex:0 0 auto; padding:0 14px 8px}
+.task-row{display:flex; gap:8px; margin-bottom:10px}
+.task-input{flex:1; min-width:0; padding:10px 12px; border-radius:11px; background:rgba(255,255,255,.07);
+  border:1px solid var(--line); color:var(--txt); font-size:13.5px; transition:.16s}
+.task-input::placeholder{color:#7E9BC9}
+.task-input:focus{outline:none; border-color:var(--line-2); background:rgba(255,255,255,.11)}
+.task-input:disabled{opacity:.85; background:rgba(255,255,255,.04)}
+.task-input.shake{animation:shakeIt .4s}
+@keyframes shakeIt{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+
+.clock-wrap{text-align:center; margin:2px 0 6px}
+.clock{font-size:44px; font-weight:800; letter-spacing:.02em; line-height:1.05;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(100deg,#FFFFFF,#A9D4FF 55%,#6FE3FF);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 6px 18px rgba(77,139,255,.35))}
+.clock.paused{background:linear-gradient(100deg,#FFE0A8,#FFB347); -webkit-background-clip:text; background-clip:text}
+.meta{display:flex; align-items:center; justify-content:center; gap:8px; font-size:11.5px; color:var(--txt-2); margin-bottom:10px}
+.meta .pill{padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.07); border:1px solid var(--line)}
+.meta .pill b{color:#CFE4FF; font-weight:600}
+.state-dot{width:7px;height:7px;border-radius:50%;background:#5B7BB5; display:inline-block; margin-right:5px; vertical-align:1px}
+.state-dot.run{background:#3ED69B; box-shadow:0 0 8px #3ED69B; animation:pulse 1.6s infinite}
+.state-dot.pause{background:#F5A623; box-shadow:0 0 8px #F5A623}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.btns{display:flex; gap:8px}
+.btn{flex:1; padding:11px 6px; border-radius:12px; font-size:14px; font-weight:600; transition:.16s; border:1px solid transparent}
+.btn:disabled{opacity:.35; cursor:not-allowed}
+.btn-primary{background:linear-gradient(120deg,#5C8CFF,#3B5BFF 55%,#7A6BFF); color:#fff;
+  box-shadow:0 8px 22px rgba(70,110,255,.42), inset 0 1px 0 rgba(255,255,255,.3)}
+.btn-primary:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 12px 26px rgba(70,110,255,.5)}
+.btn-soft{background:rgba(255,255,255,.09); border-color:var(--line); color:#D6E6FF}
+.btn-soft:hover:not(:disabled){background:rgba(255,255,255,.16)}
+.btn-warm{background:rgba(245,166,35,.16); border-color:rgba(245,180,70,.4); color:#FFD79A}
+.btn-warm:hover:not(:disabled){background:rgba(245,166,35,.26)}
+.switch-line{text-align:center; margin-top:7px; font-size:11.5px}
+.switch-line button{color:#8FB4EE; text-decoration:underline; text-underline-offset:3px; padding:2px 6px}
+.switch-line button:hover{color:#CFE4FF}
+.switch-line button:disabled{opacity:.35; cursor:not-allowed; text-decoration:none}
+
+/* 统计区 */
+.stats{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:0 14px 12px}
+.tabs{display:flex; gap:6px; margin-bottom:8px; flex:0 0 auto}
+.tabs button{flex:1; padding:7px 4px; border-radius:10px; font-size:12.5px; color:var(--txt-2);
+  background:rgba(255,255,255,.05); border:1px solid var(--line); transition:.16s}
+.tabs button.on{background:linear-gradient(120deg,rgba(77,123,255,.85),rgba(60,91,255,.75)); color:#fff; border-color:rgba(255,255,255,.25)}
+.stat-total{flex:0 0 auto; display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  padding:9px 12px; border-radius:12px; background:var(--glass-2); border:1px solid var(--line); margin-bottom:9px}
+.stat-total .k{font-size:11.5px; color:var(--txt-2)}
+.stat-total .v{font-size:17px; font-weight:800; color:#EAF3FF}
+.stat-total .v small{font-size:11px; font-weight:500; color:var(--txt-2); margin-left:5px}
+.list{flex:1 1 auto; min-height:0; overflow-y:auto; padding-right:3px}
+/* 近 7 天迷你柱状图 */
+.week{flex:0 0 auto; display:flex; gap:5px; align-items:flex-end; height:54px; margin-bottom:10px; padding:0 2px}
+.wd{flex:1; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:3px}
+.wd .b{width:100%; max-width:26px; border-radius:5px 5px 3px 3px; min-height:3px;
+  background:linear-gradient(180deg,#5C8CFF,#2F4FD8); transition:height .45s cubic-bezier(.2,.9,.3,1)}
+.wd.on .b{background:linear-gradient(180deg,#8BE9FF,#4D6BFE); box-shadow:0 0 10px rgba(111,227,255,.5)}
+.wd .l{font-size:9.5px; color:var(--txt-2); white-space:nowrap}
+.wd.on .l{color:#8BE9FF; font-weight:700}
+.row{margin-bottom:8px}
+.row .top{display:flex; justify-content:space-between; gap:8px; font-size:12.5px; margin-bottom:4px}
+.row .nm{color:#DCEAFF; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.row .nm i{font-style:normal; color:var(--txt-2); font-size:10.5px; margin-left:5px}
+.row .du{color:#A9CBFF; white-space:nowrap; font-variant-numeric:tabular-nums}
+.bar{height:7px; border-radius:999px; background:rgba(255,255,255,.09); overflow:hidden}
+.bar i{display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#6FE3FF,#4D6BFE); transition:width .5s cubic-bezier(.2,.9,.3,1)}
+.bar.g2 i{background:linear-gradient(90deg,#8F7BFF,#4D6BFE)}
+.bar.g3 i{background:linear-gradient(90deg,#6FE3FF,#25B884)}
+.bar.g4 i{background:linear-gradient(90deg,#FFB347,#F0607E)}
+.empty{padding:20px 8px; text-align:center; font-size:12.5px; color:#8FAEE0; line-height:1.9}
+
+/* 点一下就能回来接着记（统计区的项目行 / 明细行） */
+.row.proj{padding:6px 9px; margin:0 -9px 6px; border-radius:11px; cursor:pointer;
+  border:1px solid transparent; transition:background .15s, border-color .15s}
+.row.proj:hover{background:rgba(122,168,255,.11); border-color:rgba(122,168,255,.26)}
+.row.proj:active{background:rgba(122,168,255,.18)}
+.row.proj .go{font-style:normal; font-weight:400; font-size:10.5px; color:#8FC0FF; margin-left:7px; opacity:.42; transition:.15s}
+.row.proj:hover .go{opacity:1}
+.row.proj .now{font-style:normal; font-weight:400; font-size:10.5px; color:#3ED69B; margin-left:7px}
+.row.proj.live{cursor:default}
+.row.proj.live:hover{background:rgba(62,214,155,.08); border-color:rgba(62,214,155,.22)}
+
+.sess{display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:10px; background:rgba(255,255,255,.045);
+  border:1px solid rgba(140,190,255,.14); margin-bottom:6px; font-size:12px}
+.sess .t{color:var(--txt-2); font-variant-numeric:tabular-nums; flex:0 0 40px}
+.sess .n{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#DCEAFF}
+.sess .d{color:#A9CBFF; font-variant-numeric:tabular-nums}
+.sess .del{color:#7E9BC9; font-size:13px; padding:0 3px; opacity:0; transition:.15s}
+.sess:hover .del{opacity:1}
+.sess .del:hover{color:#FFB7CC}
+.sess[data-resume]{cursor:pointer; transition:background .15s, border-color .15s}
+.sess[data-resume]:hover{background:rgba(122,168,255,.13); border-color:rgba(122,168,255,.3)}
+.tag{font-style:normal; font-size:10.5px}
+.tag-live{color:#3ED69B}
+.tag-pause{color:#F5A623}
+.tag-auto{color:#9DBBF0}
+.set-row .ck{width:18px; height:18px; accent-color:#5B8CFF; cursor:pointer; flex:none}
+.set-note{font-style:normal; font-size:10.5px; color:var(--txt-2); line-height:1.4; display:inline-block; margin-top:3px}
+
+/* 设置面板 */
+.settings{display:none; padding:0 14px 10px}
+.settings.on{display:block}
+.set-card{border-radius:12px; background:var(--glass); border:1px solid var(--line); padding:11px 12px}
+.set-row{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12.5px; padding:6px 0}
+.set-row + .set-row{border-top:1px dashed rgba(140,190,255,.15)}
+.set-row select{background:rgba(255,255,255,.09); color:var(--txt); border:1px solid var(--line);
+  border-radius:9px; padding:5px 8px; font-size:12.5px}
+.set-row select:focus{outline:none; border-color:var(--line-2)}
+.mini{padding:6px 11px; border-radius:9px; font-size:12px; background:rgba(255,255,255,.09); border:1px solid var(--line); color:#D6E6FF}
+.mini:hover{background:rgba(255,255,255,.16)}
+.mini.danger{color:#FFC6D3; border-color:rgba(240,96,126,.4); background:rgba(240,96,126,.12)}
+.mini.danger:hover{background:rgba(240,96,126,.22)}
+
+/* 提示条 */
+.toast{position:fixed; left:50%; bottom:16px; transform:translate(-50%,14px); z-index:50; opacity:0; pointer-events:none;
+  padding:9px 16px; border-radius:11px; font-size:12.5px; font-weight:600; color:#fff; max-width:88%;
+  background:linear-gradient(120deg,rgba(77,123,255,.96),rgba(60,91,255,.96)); box-shadow:0 12px 30px rgba(8,20,60,.5);
+  transition:.28s; text-align:center}
+.toast.show{opacity:1; transform:translate(-50%,0)}
+.toast.good{background:linear-gradient(120deg,rgba(37,184,132,.96),rgba(20,150,110,.96))}
+.toast.warn{background:linear-gradient(120deg,rgba(245,166,35,.96),rgba(214,132,10,.96))}
+
+/* 飘心 */
+#fx{position:fixed; inset:0; pointer-events:none; z-index:40; overflow:hidden}
+.heart{position:absolute; font-size:18px; animation:floatUp 1.4s ease-out forwards}
+@keyframes floatUp{0%{transform:translateY(0) scale(.6);opacity:0}20%{opacity:1}
+  100%{transform:translateY(-110px) scale(1.2) rotate(var(--r,8deg));opacity:0}}
+
+/* 今日小结入口 */
+.day-btn{flex:0 0 auto; width:100%; margin:0 0 9px; padding:8px 12px; border-radius:11px;
+  font-size:12.5px; font-weight:600; color:#EAF3FF; text-align:center;
+  background:linear-gradient(100deg,rgba(111,227,255,.16),rgba(122,107,255,.2));
+  border:1px solid rgba(130,180,255,.32); transition:.16s}
+.day-btn:hover{background:linear-gradient(100deg,rgba(111,227,255,.26),rgba(122,107,255,.32)); border-color:var(--line-2)}
+.day-btn.glow{animation:dayGlow 1.8s ease-in-out 3; border-color:rgba(111,227,255,.7)}
+@keyframes dayGlow{0%,100%{box-shadow:0 0 0 rgba(111,227,255,0)}50%{box-shadow:0 0 18px rgba(111,227,255,.55)}}
+
+/* 今日小结弹层 */
+.modal{position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:12px}
+.modal[hidden]{display:none}
+.modal-mask{position:absolute; inset:0; background:rgba(3,10,30,.66); backdrop-filter:blur(3px);
+  animation:fadeIn .22s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-card{position:relative; width:100%; max-width:520px; max-height:calc(100vh - 24px); overflow-y:auto;
+  border-radius:18px; padding:15px 16px 13px; animation:popUp .3s cubic-bezier(.2,.9,.3,1);
+  background:linear-gradient(180deg,rgba(24,48,102,.98),rgba(8,20,50,.99));
+  border:1px solid rgba(130,180,255,.3); box-shadow:0 24px 60px rgba(2,8,26,.62)}
+@keyframes popUp{from{transform:translateY(22px) scale(.97); opacity:0}to{transform:none; opacity:1}}
+.modal-x{position:absolute; right:10px; top:9px; width:26px; height:26px; border-radius:9px;
+  color:#9DBBF0; font-size:13px; background:rgba(255,255,255,.07); border:1px solid var(--line)}
+.modal-x:hover{background:rgba(255,255,255,.16); color:#E6F0FF}
+.dm-head{display:flex; align-items:flex-start; gap:10px; margin:2px 0 12px}
+.dm-chara{flex:0 0 84px; width:84px}
+.dm-chara .whale{width:100%}
+.dm-say{flex:1; min-width:0; position:relative; border-radius:13px; padding:10px 12px;
+  background:rgba(255,255,255,.06); border:1px solid var(--line)}
+.dm-say::before{content:''; position:absolute; left:-5px; top:22px; width:10px; height:10px;
+  background:rgba(255,255,255,.06); border-left:1px solid var(--line); border-bottom:1px solid var(--line);
+  transform:rotate(45deg)}
+.dm-say b{display:block; font-size:11px; color:#8BE9FF; font-weight:700; margin-bottom:5px; letter-spacing:.04em}
+.dm-say p{margin:0 0 3px; font-size:12.5px; line-height:1.75; color:#E6F0FF}
+.dm-say p:last-child{margin-bottom:0}
+.dm-title{display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin:0 0 8px}
+.dm-title span{font-size:13px; font-weight:700; color:#DCEAFF}
+.dm-title em{font-style:normal; font-size:11px; color:var(--txt-2)}
+.dm-big{text-align:center; padding:6px 0 12px}
+.dm-big b{display:block; font-size:34px; font-weight:800; letter-spacing:.01em;
+  background:linear-gradient(100deg,#FFFFFF,#A9D4FF 55%,#6FE3FF); -webkit-background-clip:text; background-clip:text; color:transparent}
+.dm-big span{font-size:11.5px; color:var(--txt-2)}
+.dm-chips{display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin-bottom:12px}
+.dm-chips div{padding:8px 10px; border-radius:11px; background:rgba(255,255,255,.055); border:1px solid var(--line)}
+.dm-chips b{display:block; font-size:15px; color:#EAF3FF; font-weight:700}
+.dm-chips i{font-style:normal; font-size:10.5px; color:var(--txt-2)}
+.dm-autonote{grid-column:1 / -1; font-size:11px; line-height:1.45; color:#9DBBF0; background:rgba(122,168,255,.09);
+  border:1px dashed rgba(122,168,255,.3); border-radius:10px; padding:6px 9px}
+.dm-sec{margin:0 0 6px; font-size:11px; color:var(--txt-2)}
+.dm-row{margin-bottom:7px}
+.dm-row .dm-top{display:flex; justify-content:space-between; gap:8px; font-size:12px; margin-bottom:4px; color:#DCEAFF}
+.dm-row .dm-top span:last-child{color:#A9CBFF; font-variant-numeric:tabular-nums; white-space:nowrap}
+.dm-span{margin-top:9px; padding:8px 10px; border-radius:11px; font-size:11.5px; color:#BBD5FF;
+  background:rgba(255,255,255,.05); border:1px dashed rgba(140,190,255,.24); line-height:1.7}
+.dm-foot{display:flex; gap:8px; margin-top:12px}
+.dm-foot .mini{flex:1; padding:9px 6px; text-align:center}
+.dm-foot .mini.main{background:linear-gradient(120deg,rgba(92,140,255,.95),rgba(122,107,255,.9)); border-color:transparent; color:#fff; font-weight:600}
+.dm-foot .mini.main:hover{background:linear-gradient(120deg,rgba(108,155,255,1),rgba(138,124,255,.96))}
+
+/* 今日 / 本周 / 本月 切换 */
+.dm-tabs{display:flex; gap:6px; margin:0 0 11px}
+.dm-tabs button{flex:1; padding:7px 0; border-radius:10px; font-size:12px; font-family:inherit; cursor:pointer;
+  color:var(--txt-2); background:rgba(255,255,255,.05); border:1px solid var(--line); transition:all .16s}
+.dm-tabs button:hover{color:#E6F0FF; background:rgba(255,255,255,.1)}
+.dm-tabs button.on{color:#fff; font-weight:700; border-color:transparent;
+  background:linear-gradient(120deg,rgba(92,140,255,.95),rgba(122,107,255,.9))}
+/* 周期内的每日小柱子 */
+.dm-days{display:flex; align-items:flex-end; gap:2px; height:58px; margin:4px 0 3px}
+.dm-days i{flex:1; min-width:2px; border-radius:3px 3px 1px 1px; background:rgba(120,160,255,.28)}
+.dm-days i.f{background:linear-gradient(180deg,#8BE9FF,#4D6BFE)}
+.dm-days i.t{background:linear-gradient(180deg,#C6F4FF,#6F8CFF); box-shadow:0 0 9px rgba(111,227,255,.55)}
+.dm-daylab{display:flex; gap:2px; margin:0 0 11px}
+.dm-daylab span{flex:1; text-align:center; font-size:9px; color:var(--txt-2)}
+/* 时段分布 */
+.dm-tod{display:flex; gap:5px; margin:0 0 11px}
+.dm-tod div{flex:1; padding:7px 6px; border-radius:10px; text-align:center;
+  background:rgba(255,255,255,.05); border:1px solid var(--line)}
+.dm-tod b{display:block; font-size:13px; color:#EAF3FF; font-variant-numeric:tabular-nums}
+.dm-tod i{font-style:normal; font-size:10px; color:var(--txt-2)}
+/* 分析和建议 */
+.adv{margin:2px 0 0}
+.adv .a{padding:9px 11px; border-radius:11px; margin-bottom:7px;
+  background:linear-gradient(120deg,rgba(111,227,255,.10),rgba(122,107,255,.10));
+  border:1px solid rgba(111,227,255,.22)}
+.adv .a b{display:block; font-size:11.5px; color:#8BE9FF; font-weight:700; margin-bottom:3px}
+.adv .a p{margin:0; font-size:11.5px; line-height:1.72; color:#DCEAFF}
+.adv .a.tip{background:linear-gradient(120deg,rgba(255,199,120,.13),rgba(255,140,120,.10));
+  border-color:rgba(255,199,120,.3)}
+.adv .a.tip b{color:#FFCF8A}
+.dm-sec2{margin:11px 0 2px; font-size:11.5px; font-weight:700; color:#BBD5FF}
+
+/* 补记 */
+.bf-line{display:flex; justify-content:center; margin-top:5px}
+.bf-line button{background:none; border:none; font-family:inherit; cursor:pointer;
+  font-size:11.5px; color:#8FB4EE; padding:3px 9px; border-radius:8px; transition:.16s}
+.bf-line button:hover{color:#CFE4FF; background:rgba(122,168,255,.12)}
+.bf-card{max-width:352px}
+.bf-t{font-size:15px; font-weight:700; color:#EAF3FF; margin:0 0 4px}
+.bf-sub{font-size:11px; color:var(--txt-2); line-height:1.6; margin:0 0 12px}
+.bf-lab{display:block; font-size:11px; color:#AFC9F0; margin:10px 0 5px}
+.bf-in{width:100%; box-sizing:border-box; height:38px; padding:0 11px; border-radius:10px;
+  font-family:inherit; font-size:13px; color:#EAF3FF; background:rgba(255,255,255,.06);
+  border:1px solid var(--line); outline:none; transition:.16s}
+.bf-in:focus{border-color:rgba(130,180,255,.62); background:rgba(255,255,255,.1)}
+.bf-in::placeholder{color:rgba(180,205,240,.5)}
+.bf-num{display:flex; align-items:center; gap:8px}
+.bf-num .bf-in{flex:1; font-variant-numeric:tabular-nums; font-size:15px; font-weight:700}
+.bf-num span{font-size:11.5px; color:var(--txt-2)}
+.bf-chips{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:7px}
+.bf-chips button{padding:7px 0; border-radius:9px; font-family:inherit;
+  font-size:11px; color:var(--txt-2); cursor:pointer;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); transition:.16s}
+.bf-chips button:hover{color:#E6F0FF; border-color:rgba(130,180,255,.5)}
+.bf-chips button.on{color:#fff; font-weight:700; border-color:transparent;
+  background:linear-gradient(120deg,rgba(92,140,255,.9),rgba(122,107,255,.85))}
+.bf-day{display:flex; gap:6px}
+.bf-day button{flex:1; padding:8px 0; border-radius:10px; font-family:inherit; font-size:12px;
+  color:var(--txt-2); cursor:pointer; background:rgba(255,255,255,.05);
+  border:1px solid var(--line); transition:.16s}
+.bf-day button.on{color:#fff; font-weight:700; border-color:transparent;
+  background:linear-gradient(120deg,rgba(92,140,255,.9),rgba(122,107,255,.85))}
+.bf-foot{display:flex; gap:8px; margin-top:14px}
+.bf-foot button{flex:1; padding:9px 6px; text-align:center}
+.bf-foot .mini.main{background:linear-gradient(120deg,rgba(92,140,255,.95),rgba(122,107,255,.9));
+  border-color:transparent; color:#fff; font-weight:600}
+.bf-foot .mini.main:hover{background:linear-gradient(120deg,rgba(108,155,255,1),rgba(138,124,255,.96))}
+
+/* 应用窗口不高（快捷方式 500x760，客户区约 720px）：整体收紧，让统计区也能露出来 */
+@media (max-height:800px){
+  .app{gap:9px; padding:15px 22px 14px}
+  .whale{width:94px}
+  .quote{min-height:60px; padding:13px 16px}
+  .clock{font-size:50px}
+  .status{margin-top:-4px}
+  .btn{height:44px}
+  .week .bar{height:38px}
+}
+
+@media (max-height:640px){
+  .clock{font-size:36px}
+  .hero{padding-bottom:4px}
+  .quote{min-height:66px}
+  .quote p{font-size:12px}
+  .dm-chara{flex-basis:64px; width:64px}
+  .dm-big b{font-size:27px}
+  .dm-big{padding:2px 0 8px}
+}
+</style>
+</head>
+<body>
+<div class="sea" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="bubbles" id="bubbles" aria-hidden="true"></div>
+
+<div class="app">
+  <header>
+    <div class="logo"><span class="dot"></span>学习计时器</div>
+    <div class="sp"></div>
+    <button class="icon-btn" id="soundBtn" title="音效开关">♪</button>
+    <button class="icon-btn" id="setBtn" title="设置">⚙</button>
+  </header>
+
+  <section class="hero">
+    <div class="whale-slot" id="whaleSlot">
+      <!--__WHALE__-->
+    </div>
+    <div class="quote" id="quoteBox">
+      <p id="quoteText">准备好了就开始吧，我在这里陪你。</p>
+      <em id="quoteBy">—— DeepSeek酱</em>
+    </div>
+  </section>
+
+  <section class="timer">
+    <div class="task-row">
+      <input class="task-input" id="taskInput" maxlength="40" placeholder="这次要学什么？例如：病理学 · 炎症">
+    </div>
+    <div class="clock-wrap">
+      <div class="clock" id="clock">00:00:00</div>
+    </div>
+    <div class="meta">
+      <span class="pill"><span class="state-dot" id="stateDot"></span><b id="stateText">未开始</b></span>
+      <span class="pill">今天 <b id="todayText">0 分钟</b></span>
+    </div>
+    <div class="btns">
+      <button class="btn btn-primary" id="btnStart">开始</button>
+      <button class="btn btn-soft" id="btnPause" disabled>暂停</button>
+      <button class="btn btn-warm" id="btnStop" disabled>结束</button>
+    </div>
+    <div class="switch-line">
+      <button id="btnSwitch" disabled>结束当前任务，换一个</button>
+      <span class="switch-hint">或点下面任意项目，直接回去接着记</span>
+    </div>
+    <div class="bf-line"><button id="btnBackfill">忘了开计时？补记一笔</button></div>
+  </section>
+
+  <section class="settings" id="settings">
+    <div class="set-card">
+      <div class="set-row">
+        <span>名言提醒间隔</span>
+        <select id="setInterval">
+          <option value="3">每 3 分钟</option>
+          <option value="5">每 5 分钟</option>
+          <option value="10">每 10 分钟</option>
+          <option value="15">每 15 分钟</option>
+          <option value="30">每 30 分钟</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <span>每天 23:59 自动收尾<br><i class="set-note">忘按「结束」时，当天最后一秒替你结算，不会把时间带到第二天</i></span>
+        <input type="checkbox" id="setAutoClose" class="ck">
+      </div>
+      <div class="set-row">
+        <span>数据</span>
+        <span>
+          <button class="mini" id="btnExport">导出备份</button>
+          <button class="mini" id="btnImport">导入</button>
+        </span>
+      </div>
+      <div class="set-row">
+        <span>清空全部记录</span>
+        <button class="mini danger" id="btnClearAll">清空</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="tabs">
+      <button class="on" data-tab="today">今日</button>
+      <button data-tab="all">累计</button>
+    </div>
+    <div class="stat-total">
+      <span class="k" id="totalLabel">今日学习总时长</span>
+      <span class="v" id="totalValue">0 分钟<small id="totalSub"></small></span>
+    </div>
+    <button class="day-btn" id="btnDay">🌙 学习小结 · 日 / 周 / 月 · 让 DeepSeek酱 夸夸你</button>
+    <div class="week" id="week"></div>
+    <div class="list" id="list"></div>
+  </section>
+</div>
+
+<div class="modal" id="dayModal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card">
+    <button class="modal-x" data-close title="关闭">✕</button>
+    <div class="dm-head">
+      <div class="dm-chara" id="dayChara"></div>
+      <div class="dm-say">
+        <b>DeepSeek酱 说</b>
+        <div id="dayComment"></div>
+      </div>
+    </div>
+    <div class="dm-tabs" id="dayTabs"></div>
+    <div class="dm-title"><span id="dayTitle">今天的学习小结</span><em id="dayDate"></em></div>
+    <div class="dm-big"><b id="dayTotal">0 分钟</b><span id="daySub"></span></div>
+    <div class="dm-chips" id="dayChips"></div>
+    <div id="dayBody"></div>
+    <div class="dm-foot">
+      <button class="mini" id="dayAgain">再记一段</button>
+      <button class="mini main" id="dayClose">收下这句夸奖</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="bfModal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card bf-card">
+    <button class="modal-x" data-close title="关闭">✕</button>
+    <div class="bf-t">补记一笔</div>
+    <p class="bf-sub">学的时候忘了按开始？把时长记下来，直接算进那个项目里。</p>
+    <label class="bf-lab" for="bfTask">学的是什么</label>
+    <input class="bf-in" id="bfTask" list="bfList" placeholder="例如：病理学 · 炎症" autocomplete="off">
+    <datalist id="bfList"></datalist>
+    <label class="bf-lab" for="bfMin">补多久</label>
+    <div class="bf-num">
+      <input class="bf-in" id="bfMin" type="number" min="1" max="1440" step="1" inputmode="numeric" placeholder="0">
+      <span>分钟</span>
+    </div>
+    <div class="bf-chips" id="bfChips">
+      <button data-min="15">15</button>
+      <button data-min="30">30</button>
+      <button data-min="45">45</button>
+      <button data-min="60">1 小时</button>
+      <button data-min="90">1.5 小时</button>
+      <button data-min="120">2 小时</button>
+    </div>
+    <label class="bf-lab">记到哪天</label>
+    <div class="bf-day" id="bfDay">
+      <button data-d="0" class="on">今天</button>
+      <button data-d="1">昨天</button>
+    </div>
+    <div class="bf-foot">
+      <button class="mini" data-close>算了</button>
+      <button class="mini main" id="bfOk">记上</button>
+    </div>
+  </div>
+</div>
+
+<div id="fx" aria-hidden="true"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept="application/json,.json" style="display:none">
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+
+  /* ===================== 名人名言 ===================== */
+  var QUOTES = [
+    ['不积跬步，无以至千里；不积小流，无以成江海。', '荀子'],
+    ['锲而舍之，朽木不折；锲而不舍，金石可镂。', '荀子'],
+    ['骐骥一跃，不能十步；驽马十驾，功在不舍。', '荀子'],
+    ['学而不思则罔，思而不学则殆。', '孔子'],
+    ['知之者不如好之者，好之者不如乐之者。', '孔子'],
+    ['千里之行，始于足下。', '老子'],
+    ['合抱之木，生于毫末；九层之台，起于累土。', '老子'],
+    ['业精于勤，荒于嬉；行成于思，毁于随。', '韩愈'],
+    ['书山有路勤为径，学海无涯苦作舟。', '韩愈'],
+    ['读书破万卷，下笔如有神。', '杜甫'],
+    ['纸上得来终觉浅，绝知此事要躬行。', '陆游'],
+    ['博观而约取，厚积而薄发。', '苏轼'],
+    ['古之立大事者，不惟有超世之才，亦必有坚忍不拔之志。', '苏轼'],
+    ['盛年不重来，一日难再晨。及时当勉励，岁月不待人。', '陶渊明'],
+    ['黑发不知勤学早，白首方悔读书迟。', '颜真卿'],
+    ['少壮不努力，老大徒伤悲。', '《长歌行》'],
+    ['一寸光阴一寸金，寸金难买寸光阴。', '《增广贤文》'],
+    ['行百里者半九十。', '《战国策》'],
+    ['精诚所至，金石为开。', '《后汉书》'],
+    ['不飞则已，一飞冲天；不鸣则已，一鸣惊人。', '《史记》'],
+    ['宝剑锋从磨砺出，梅花香自苦寒来。', '《警世贤文》'],
+    ['时间就像海绵里的水，只要愿挤，总还是有的。', '鲁迅'],
+    ['哪里有天才，我是把别人喝咖啡的工夫都用在工作上的。', '鲁迅'],
+    ['聪明在于勤奋，天才在于积累。', '华罗庚'],
+    ['天才是百分之一的灵感加百分之九十九的汗水。', '爱迪生'],
+    ['在科学上没有平坦的大道，只有不畏劳苦沿着陡峭山路攀登的人，才有希望达到光辉的顶点。', '马克思'],
+    ['生活就像海洋，只有意志坚强的人，才能到达彼岸。', '马克思'],
+    ['我从来不曾有过幸运，将来也永远不指望幸运，我的最高原则是：不论对任何困难都决不屈服！', '居里夫人'],
+    ['想象力比知识更重要。', '爱因斯坦'],
+    ['学习知识要善于思考、思考、再思考，我就是靠这个学习方法成为科学家的。', '爱因斯坦'],
+    ['成功＝艰苦的劳动＋正确的方法＋少说空话。', '爱因斯坦'],
+    ['重复是学习之母。', '狄慈根'],
+    ['最困难之时，就是离我们成功不远之日。', '拿破仑'],
+    ['有了坚定的意志，就等于给双脚添了一对翅膀。', '乔·贝利'],
+    ['天才就是无止境刻苦勤奋的能力。', '卡莱尔']
+  ];
+
+  /* ===================== 状态 ===================== */
+  var KEY = 'deepseekchan-study-timer-v1';
+  var S = {
+    sessions: [],            // {id, task, start, end, ms}
+    current: null,           // {task, startedAt, accum, resumeAt, paused}
+    settings: { sound: true, interval: 5, autoClose: true },
+    lastQuoteAt: 0,
+    quoteIdx: -1,
+    lastTask: ''
+  };
+  function applyData(o) {
+    if (!o || typeof o !== 'object') return;
+    S.sessions = Array.isArray(o.sessions) ? o.sessions : [];
+    S.current = o.current || null;
+    if (o.settings) { S.settings.sound = o.settings.sound !== false; S.settings.interval = o.settings.interval || 5;
+                      S.settings.autoClose = o.settings.autoClose !== false; }
+    S.lastQuoteAt = o.lastQuoteAt || 0;
+    S.quoteIdx = typeof o.quoteIdx === 'number' ? o.quoteIdx : -1;
+    S.lastTask = o.lastTask || '';
+  }
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) applyData(JSON.parse(raw));
+  } catch (e) { }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { }
+  }
+
+  /* ===================== 工具 ===================== */
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtClock(ms) {
+    if (ms < 0) ms = 0;
+    var t = Math.floor(ms / 1000);
+    return pad(Math.floor(t / 3600)) + ':' + pad(Math.floor(t / 60) % 60) + ':' + pad(t % 60);
+  }
+  function fmtDur(ms) {
+    if (ms <= 0) return '0 分钟';
+    var m = Math.round(ms / 60000);
+    if (m < 1) return '不到 1 分钟';
+    if (m < 60) return m + ' 分钟';
+    var h = Math.floor(m / 60), r = m % 60;
+    return r ? h + ' 小时 ' + r + ' 分' : h + ' 小时';
+  }
+  function fmtDurShort(ms) {
+    if (ms <= 0) return '0m';
+    var m = Math.round(ms / 60000);
+    if (m < 1) return '<1m';
+    if (m < 60) return m + 'm';
+    return Math.floor(m / 60) + 'h' + (m % 60 ? (m % 60) + 'm' : '');
+  }
+  function fmtTime(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function dayKey(ts) { var d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function todayKey() { return dayKey(Date.now()); }
+  function elapsed(c) { return !c ? 0 : (c.accum || 0) + (c.resumeAt ? Date.now() - c.resumeAt : 0); }
+  function isRunning() { return !!(S.current && S.current.resumeAt); }
+
+  /* ===================== 音效 ===================== */
+  var actx = null;
+  function tone(freq, dur, delay, vol) {
+    if (!S.settings.sound) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var t0 = actx.currentTime + (delay || 0);
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol || 0.06, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+    } catch (e) { }
+  }
+  var SFX = {
+    click: function () { tone(620, 0.06, 0, 0.035); },
+    start: function () { tone(587, 0.12, 0, 0.05); tone(880, 0.16, 0.09, 0.045); },
+    pause: function () { tone(440, 0.12, 0, 0.04); tone(330, 0.16, 0.09, 0.035); },
+    stop: function () { tone(660, 0.1, 0, 0.045); tone(990, 0.18, 0.08, 0.04); },
+    quote: function () { tone(784, 0.14, 0, 0.055); tone(1047, 0.22, 0.11, 0.05); }
+  };
+
+  /* ===================== 立绘表情 ===================== */
+  var whale = null, flashT = null;
+  function baseExp() {
+    if (!S.current) return 'normal';
+    return S.current.resumeAt ? 'happy' : 'think';
+  }
+  function setExp(e) { if (whale) whale.dataset.exp = e; }
+  function flashExp(e, ms) {
+    if (!whale) return;
+    setExp(e);
+    if (e === 'cheer') { whale.classList.remove('cheer'); void whale.offsetWidth; whale.classList.add('cheer'); }
+    clearTimeout(flashT);
+    flashT = setTimeout(function () { setExp(baseExp()); }, ms || 1600);
+  }
+  function hearts(n) {
+    for (var i = 0; i < (n || 6); i++) {
+      (function (i) {
+        setTimeout(function () {
+          var d = document.createElement('div');
+          d.className = 'heart';
+          d.textContent = ['💙', '✨', '🫧', '💙'][i % 4];
+          d.style.left = (8 + Math.random() * 30) + 'vw';
+          d.style.top = (24 + Math.random() * 10) + 'vh';
+          d.style.setProperty('--r', (Math.random() * 30 - 15) + 'deg');
+          $('#fx').appendChild(d);
+          setTimeout(function () { d.remove(); }, 1500);
+        }, i * 80);
+      })(i);
+    }
+  }
+
+  /* ===================== 名言 ===================== */
+  var quoteBox, quoteText, quoteBy;
+  function newQuote(silent) {
+    var i = Math.floor(Math.random() * QUOTES.length);
+    if (QUOTES.length > 1 && i === S.quoteIdx) i = (i + 1) % QUOTES.length;
+    S.quoteIdx = i;
+    S.lastQuoteAt = Date.now();
+    quoteBox.classList.add('fade');
+    setTimeout(function () {
+      quoteText.textContent = '「' + QUOTES[i][0] + '」';
+      quoteBy.textContent = '—— ' + QUOTES[i][1];
+      quoteBox.classList.remove('fade');
+    }, 180);
+    save();
+    if (!silent) { SFX.quote(); flashExp('cheer', 1700); }
+  }
+
+  /* ===================== 提示条 ===================== */
+  var toastT = null;
+  function toast(msg, kind) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { t.className = 'toast'; }, 2000);
+  }
+
+  /* ===================== 计时逻辑 ===================== */
+
+  /* 当天最后一秒（23:59:59.999） */
+  function dayEndOf(ts) { var d = new Date(ts); d.setHours(23, 59, 59, 999); return d.getTime(); }
+
+  /* 每日 23:59 自动收尾：
+     忘记按「结束」的计时，到了当天 23:59 就替用户结算掉，跨过午夜的那部分不计入，
+     免得第二天早上一开应用，昨天的钟还在走、把今天的时间算到昨天去。
+     返回收尾信息（没发生就返回 null）。 */
+  function autoCloseIfNeeded() {
+    if (S.settings.autoClose === false) return null;
+    var c = S.current;
+    if (!c) return null;
+    var anchor = c.resumeAt || c.startedAt;      // 最后一段还在走的起点
+    if (!anchor) return null;
+    var limit = dayEndOf(anchor);
+    if (Date.now() <= limit) return null;        // 还没跨过当天 23:59:59
+    var ms = (c.accum || 0) + (c.resumeAt ? Math.max(0, limit - c.resumeAt) : 0);
+    var rec = { id: 's' + limit + 'a', task: c.task, start: c.startedAt, end: limit, ms: ms, auto: 1 };
+    if (ms >= 1000) S.sessions.push(rec);
+    S.current = null;
+    S.lastAutoClose = { task: rec.task, ms: ms, at: limit, day: dayKey(limit) };
+    save();
+    return S.lastAutoClose;
+  }
+
+  /* 自动收尾的提示：说清楚发生了什么，别让用户以为时间丢了 */
+  function announceAutoClose(info) {
+    if (!info) return;
+    SFX.stop(); flashExp('cheer', 1900); hearts(6); newQuote(true);
+    var b = $('#btnDay');
+    if (b) { b.classList.remove('glow'); void b.offsetWidth; b.classList.add('glow'); setTimeout(function () { b.classList.remove('glow'); }, 6000); }
+    render();
+    toast('到 23:59 啦，「' + info.task + '」' + (info.ms >= 1000 ? '收好了（' + fmtDur(info.ms) + '）' : '这段太短没记') + '～明天再开新的一段', info.ms >= 1000 ? 'good' : 'warn');
+  }
+
+  function startTimer(silent) {
+    var stale = autoCloseIfNeeded();          // 跨天的旧计时先收掉，别占着位子
+    if (stale) announceAutoClose(stale);
+    var name = ($('#taskInput').value || '').trim();
+    if (!name) {
+      var inp = $('#taskInput');
+      inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake');
+      inp.focus();
+      flashExp('sad', 1500);
+      toast('先写一下这次要学什么吧～', 'warn');
+      return;
+    }
+    if (S.current) return;                       // 已经在计时
+    S.current = { task: name, startedAt: Date.now(), accum: 0, resumeAt: Date.now(), paused: false };
+    S.lastTask = name;
+    S.lastQuoteAt = 0;
+    save();
+    SFX.start();
+    newQuote();
+    hearts(5);
+    render();
+    if (!silent) toast('开始计时 · ' + name, 'good');
+  }
+  function pauseTimer() {
+    if (!isRunning()) return;
+    S.current.accum = elapsed(S.current);
+    S.current.resumeAt = null;
+    S.current.paused = true;
+    save(); SFX.pause();
+    setExp('think');
+    render();
+    toast('已暂停，随时可以继续');
+  }
+  function resumeTimer() {
+    if (!S.current || S.current.resumeAt) return;
+    var stale = autoCloseIfNeeded();          // 跨天的旧计时不许接着算
+    if (stale) { announceAutoClose(stale); return; }
+    S.current.resumeAt = Date.now();
+    S.current.paused = false;
+    save(); SFX.start();
+    newQuote(true);
+    render();
+    toast('继续计时');
+  }
+  function stopTimer(quiet, noFx) {
+    if (!S.current) return;
+    var ms = elapsed(S.current);
+    var rec = { id: 's' + Date.now(), task: S.current.task, start: S.current.startedAt, end: Date.now(), ms: ms };
+    if (ms >= 1000) S.sessions.push(rec);
+    var wasTask = S.current.task;
+    S.current = null;
+    save(); SFX.stop();
+    if (!noFx) { flashExp('cheer', 1800); hearts(8); newQuote(true); }
+    render();
+    if (!quiet) toast(ms >= 1000 ? ('完成「' + wasTask + '」· ' + fmtDur(ms)) : '这次太短啦，没记进统计', ms >= 1000 ? 'good' : 'warn');
+    if (!quiet && ms >= 60000) {           // 认真学完一段，把「今日小结」闪一下提醒
+      var b = $('#btnDay');
+      b.classList.remove('glow'); void b.offsetWidth; b.classList.add('glow');
+      setTimeout(function () { b.classList.remove('glow'); }, 6000);
+    }
+  }
+  function switchTask() {
+    if (!S.current) return;
+    stopTimer(true);
+    var inp = $('#taskInput');
+    inp.value = '';
+    inp.disabled = false;
+    inp.focus();
+    render();
+    toast('已结束上一项，输入新任务再点开始', 'good');
+  }
+  /* 从统计区点某个项目/明细，回来接着记这一项（时间累加到同一个项目上） */
+  function resumeTask(name) {
+    name = (name || '').trim();
+    if (!name) return;
+    if (S.current && S.current.task === name) {
+      toast(S.current.resumeAt ? '「' + name + '」正在计时中' : '「' + name + '」已暂停，点「继续」接着算', 'warn');
+      return;
+    }
+    var prev = S.current ? S.current.task : '';
+    if (S.current) stopTimer(true, true);      // 静默结束上一项，不打断动画
+    $('#taskInput').value = name;
+    startTimer(true);
+    toast(prev ? ('已结束「' + prev + '」，接着记「' + name + '」') : ('接着记「' + name + '」'), 'good');
+  }
+
+  /* ===================== 补记 ===================== */
+  var bfDay = 0;                 // 0=今天 1=昨天
+  function backfillTasks() {
+    var seen = {}, out = [];
+    S.sessions.slice().reverse().forEach(function (s) {
+      var k = (s.task || '').trim();
+      if (k && !seen[k]) { seen[k] = 1; out.push(k); }
+    });
+    if (S.current && S.current.task && !seen[S.current.task]) out.unshift(S.current.task);
+    return out.slice(0, 40);
+  }
+  function openBackfill() {
+    var inp = $('#taskInput').value.trim() || S.lastTask || '';
+    $('#bfTask').value = inp;
+    $('#bfMin').value = '';
+    bfDay = 0;
+    Array.prototype.forEach.call($('#bfDay').children, function (b) {
+      b.classList.toggle('on', b.getAttribute('data-d') === '0');
+    });
+    Array.prototype.forEach.call($('#bfChips').children, function (b) { b.classList.remove('on'); });
+    $('#bfList').innerHTML = backfillTasks().map(function (t) {
+      return '<option value="' + t.replace(/"/g, '&quot;') + '">';
+    }).join('');
+    $('#bfModal').hidden = false;
+    setTimeout(function () {
+      if ($('#bfTask').value) $('#bfMin').focus(); else $('#bfTask').focus();
+    }, 60);
+  }
+  function closeBackfill() { $('#bfModal').hidden = true; }
+  function doBackfill() {
+    var task = ($('#bfTask').value || '').trim();
+    var min = parseInt($('#bfMin').value, 10);
+    if (!task) { toast('写一下这次学的是什么～', 'warn'); $('#bfTask').focus(); return; }
+    if (!isFinite(min) || min <= 0) { toast('补多久？填个分钟数，比如 45', 'warn'); $('#bfMin').focus(); return; }
+    if (min > 1440) { toast('一天最多 1440 分钟，再长就分两天记吧', 'warn'); $('#bfMin').focus(); return; }
+
+    var ms = min * 60000;
+    var dayStart = startOfDay(Date.now()) - bfDay * 86400000;
+    // 今天：接在「现在」往前推；昨天：摆在昨天末尾。都不能越到前一天，
+    // 否则会被算到另一天（统计是按 start 归属的）。
+    var end = bfDay === 0 ? Date.now() : (dayStart + 86399999);
+    var start = Math.max(dayStart, end - ms);
+    S.sessions.push({
+      id: 's' + Date.now() + Math.random().toString(36).slice(2, 6),
+      task: task, start: start, end: end, ms: ms, manual: 1
+    });
+    S.lastTask = task;
+    save();
+    SFX.stop(); flashExp('cheer', 1500); hearts(4);
+    closeBackfill();
+    render();
+    toast('补记好了 · ' + task + ' +' + fmtDur(ms), 'good');
+  }
+
+  /* ===================== 统计 ===================== */
+  var tab = 'today';
+  function agg(list) {
+    var map = {}, order = [];
+    list.forEach(function (s) {
+      var k = s.task || '未命名任务';
+      if (!map[k]) { map[k] = { task: k, ms: 0, n: 0 }; order.push(k); }
+      map[k].ms += s.ms; map[k].n++;
+    });
+    return order.map(function (k) { return map[k]; }).sort(function (a, b) { return b.ms - a.ms; });
+  }
+  function sessionList(uptoNow) {
+    var out = S.sessions.slice();
+    if (uptoNow && S.current) {
+      out.push({ id: '__cur', task: S.current.task, start: S.current.startedAt, end: Date.now(),
+                 ms: elapsed(S.current), live: true, paused: !S.current.resumeAt });
+    }
+    return out;
+  }
+  var WD = ['日', '一', '二', '三', '四', '五', '六'];
+  function renderWeek() {
+    var all = sessionList(true);
+    var days = [];
+    var base = new Date(); base.setHours(0, 0, 0, 0);
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(base.getTime() - i * 86400000);
+      var k = dayKey(d.getTime());
+      var ms = 0;
+      all.forEach(function (s) { if (dayKey(s.start) === k) ms += s.ms; });
+      days.push({ d: d, ms: ms, today: i === 0 });
+    }
+    var max = Math.max.apply(null, days.map(function (x) { return x.ms; }).concat([1]));
+    $('#week').innerHTML = days.map(function (x) {
+      var h = x.ms > 0 ? Math.max(4, Math.round(x.ms / max * 36)) : 3;
+      return '<div class="wd' + (x.today ? ' on' : '') + '" title="' + (x.d.getMonth() + 1) + '/' + x.d.getDate() + ' · ' + fmtDur(x.ms) + '">' +
+        '<div class="b" style="height:' + h + 'px"></div>' +
+        '<div class="l">' + (x.today ? '今天' : WD[x.d.getDay()]) + '</div></div>';
+    }).join('');
+  }
+  function renderStats() {
+    var all = sessionList(true);
+    var today = all.filter(function (s) { return dayKey(s.start) === todayKey(); });
+    var list = tab === 'today' ? today : all;
+    var totalMs = list.reduce(function (a, s) { return a + s.ms; }, 0);
+    var items = agg(list);
+
+    $('#totalLabel').textContent = tab === 'today' ? '今日学习总时长' : '累计学习总时长';
+    $('#totalValue').innerHTML = fmtDur(totalMs) + '<small>' + (tab === 'today'
+      ? (items.length ? items.length + ' 个项目' : '')
+      : (all.length ? all.length + ' 段 · ' + new Set(all.map(function (s) { return dayKey(s.start); })).size + ' 天' : '')) + '</small>';
+
+    var box = $('#list');
+    renderWeek();
+    if (!items.length) {
+      box.innerHTML = '<div class="empty">' + (tab === 'today'
+        ? '今天还没有记录。<br>写下任务名，点「开始」就会记在这里。'
+        : '还没有任何记录。') + '</div>';
+      return;
+    }
+    var max = items[0].ms || 1;
+    var liveTask = S.current ? S.current.task : '';
+    var html = items.map(function (it, i) {
+      var pct = Math.max(2, Math.round(it.ms / max * 100));
+      var share = totalMs ? Math.round(it.ms / totalMs * 100) : 0;
+      var on = liveTask === it.task;
+      return '<div class="row proj' + (on ? ' live' : '') + '"' +
+        (on ? '' : ' data-resume="' + esc(it.task) + '" title="点一下，接着记「' + esc(it.task) + '」"') + '>' +
+        '<div class="top"><span class="nm">' + esc(it.task) +
+        '<i>' + share + '%</i></span><span class="du">' + fmtDur(it.ms) +
+        (on ? '<i class="now">● 计时中</i>' : '<i class="go">▶ 接着记</i>') + '</span></div>' +
+        '<div class="bar g' + ((i % 4) + 1) + '"><i style="width:' + pct + '%"></i></div></div>';
+    }).join('');
+
+    if (tab === 'today') {
+      var recent = list.slice().sort(function (a, b) { return b.end - a.end; }).slice(0, 12);
+      if (recent.length) {
+        html += '<div class="row" style="margin-top:12px"><div class="top"><span class="nm" style="color:#9DBBF0;font-size:11.5px">明细</span></div></div>';
+        html += recent.map(function (s) {
+          var tag = s.live
+            ? (s.paused ? ' <i class="tag tag-pause">·已暂停</i>' : ' <i class="tag tag-live">·计时中</i>')
+            : (s.auto ? ' <i class="tag tag-auto">·23:59 收尾</i>' : '');
+          return '<div class="sess"' +
+            (s.live ? '' : ' data-resume="' + esc(s.task) + '" title="点一下，接着记「' + esc(s.task) + '」"') + '>' +
+            '<span class="t">' + fmtTime(s.start) + '</span>' +
+            '<span class="n">' + esc(s.task) + tag + '</span>' +
+            '<span class="d">' + fmtDurShort(s.ms) + '</span>' +
+            (s.live ? '' : '<button class="del" data-del="' + s.id + '" title="删除这条">✕</button>') + '</div>';
+        }).join('');
+      }
+    }
+    box.innerHTML = html;
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ===================== 小结（今日 / 本周 / 本月） ===================== */
+  var PERIODS = [
+    { id: 'day', name: '今日', title: '今天的学习小结' },
+    { id: 'week', name: '本周', title: '本周的学习小结' },
+    { id: 'month', name: '本月', title: '本月的学习小结' }
+  ];
+  var dayPeriod = 'day';
+
+  function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  function fmtMD(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function sumMs(list) { return list.reduce(function (a, s) { return a + s.ms; }, 0); }
+
+  /* 连续天数：今天有记录就从今天数，还没开始就从昨天往前数 */
+  function streakDays(all) {
+    var streak = 0, i = all.some(function (s) { return dayKey(s.start) === todayKey(); }) ? 0 : 1;
+    for (; i < 400; i++) {
+      var k = dayKey(Date.now() - i * 86400000);
+      if (all.some(function (s) { return dayKey(s.start) === k; })) streak++; else break;
+    }
+    return streak;
+  }
+
+  /* 周期边界：周从周一起算，月从 1 号起算 */
+  function periodRange(kind) {
+    var now = Date.now(), s, e, p0, p1, label;
+    if (kind === 'week') {
+      var d = new Date(startOfDay(now));
+      s = d.getTime() - ((d.getDay() + 6) % 7) * 86400000;
+      e = s + 7 * 86400000;
+      p0 = s - 7 * 86400000; p1 = s;
+      label = fmtMD(s) + ' – ' + fmtMD(s + 6 * 86400000);
+    } else if (kind === 'month') {
+      var n = new Date(now);
+      s = new Date(n.getFullYear(), n.getMonth(), 1).getTime();
+      e = new Date(n.getFullYear(), n.getMonth() + 1, 1).getTime();
+      p0 = new Date(n.getFullYear(), n.getMonth() - 1, 1).getTime(); p1 = s;
+      label = n.getFullYear() + ' 年 ' + (n.getMonth() + 1) + ' 月';
+    } else {
+      s = startOfDay(now); e = s + 86400000;
+      p0 = s - 86400000; p1 = s;
+      var t = new Date(s);
+      label = (t.getMonth() + 1) + ' 月 ' + t.getDate() + ' 日 · 周' + WD[t.getDay()];
+    }
+    return { start: s, end: e, prevStart: p0, prevEnd: p1, label: label,
+             days: Math.max(1, Math.floor((Math.min(now, e - 1) - s) / 86400000) + 1) };
+  }
+
+  function periodStat(kind) {
+    var all = sessionList(true);
+    var R = periodRange(kind);
+    var inRange = function (lo, hi) {
+      return all.filter(function (s) { return s.start >= lo && s.start < hi; });
+    };
+    var list = inRange(R.start, R.end);
+    var prevTotal = sumMs(inRange(R.prevStart, R.prevEnd));
+    var total = sumMs(list);
+    var items = agg(list);
+
+    var byDay = [], n = Math.round((R.end - R.start) / 86400000);
+    for (var i = 0; i < n; i++) {
+      var ts = R.start + i * 86400000, k = dayKey(ts);
+      byDay.push({ ts: ts, ms: sumMs(all.filter(function (s) { return dayKey(s.start) === k; })) });
+    }
+    var used = byDay.filter(function (x) { return x.ms > 0; });
+
+    var tod = [0, 0, 0, 0];        // 凌晨 / 上午 / 下午 / 晚上
+    list.forEach(function (s) {
+      var h = new Date(s.start).getHours();
+      tod[h < 5 ? 0 : (h < 12 ? 1 : (h < 18 ? 2 : 3))] += s.ms;
+    });
+
+    var longest = list.slice().sort(function (a, b) { return b.ms - a.ms; })[0] || null;
+    var bestDay = used.slice().sort(function (a, b) { return b.ms - a.ms; })[0] || null;
+    var first = list.length ? Math.min.apply(null, list.map(function (s) { return s.start; })) : 0;
+    var last = list.length ? Math.max.apply(null, list.map(function (s) { return s.end; })) : 0;
+
+    return { kind: kind, R: R, list: list, total: total, prevTotal: prevTotal, items: items,
+             autoN: list.filter(function (s) { return s.auto; }).length,
+             byDay: byDay, used: used, tod: tod, longest: longest, bestDay: bestDay,
+             first: first, last: last, days: R.days, rest: Math.max(0, R.days - used.length),
+             avg: total / Math.max(1, R.days), streak: streakDays(all), running: isRunning() };
+  }
+
+  function dayStat() { return periodStat('day'); }
+
+  /* 点评：小朋友语气，只夸不训，短句 + 语气词 */
+  function dayComment(st) {
+    var out = [], m = Math.round(st.total / 60000), d = fmtDur(st.total);
+    if (!st.list.length) {
+      out.push('咦？今天还一笔都没记耶～');
+      out.push('要不要先写一个小任务呀？学 1 分钟也算数的哦，我在这里陪着你！');
+      if (st.streak > 0) out.push('不过你已经连着 ' + st.streak + ' 天有记录啦，今天也别断掉好不好嘛～');
+      return out;
+    }
+    if (m < 5) {
+      out.push('哇，你坐下来开始啦！');
+      out.push('虽然只有 ' + d + '，可是「开始」这一步最最最难了，你已经迈出去咯～');
+    } else if (m < 20) {
+      out.push('你学了 ' + d + '耶～小本本已经给你记上啦！');
+      out.push('慢慢来哦，一点一点，就会变得好多好多。');
+    } else if (m < 45) {
+      out.push(d + '咯！能安安静静坐这么久，好厉害呀～');
+    } else if (m < 90) {
+      out.push(d + '！！你今天好认真哦，脑瓜子一直在努力转呢～');
+    } else if (m < 150) {
+      out.push(d + '——好厉害好厉害！');
+      out.push('你像小海豚一样，一头扎进去就不肯出来啦～');
+    } else if (m < 240) {
+      out.push(d + '！！！你今天像装了小马达，停都停不下来耶～');
+    } else {
+      out.push(d + '！！！超级超级厉害！');
+      out.push('三朵小红花都给你！🌸🌸🌸');
+    }
+    var top = st.items[0];
+    if (top && st.items.length === 1) {
+      out.push('今天专门跟「' + top.task + '」较劲，' + fmtDur(top.ms) + '都给了它，好专注呀！');
+    } else if (top) {
+      out.push('其中「' + top.task + '」学得最久，有 ' + fmtDur(top.ms) + '，你在这个科目上肯定悄悄变强了一点点！');
+    }
+    if (st.list.length >= 2) out.push('今天一共坐了 ' + st.list.length + ' 次，能一次又一次回到桌子前，这个最最了不起啦。');
+    if (st.prevTotal > 0) {
+      var diff = st.total - st.prevTotal;
+      if (diff > 60000) out.push('比昨天还多学了 ' + fmtDur(diff) + '，你在进步哦！');
+      else if (diff < -60000) out.push('昨天你学了 ' + fmtDur(st.prevTotal) + '，今天也不容易呀，明天我们再一起加油好不好？');
+      else out.push('和昨天差不多，每天都稳稳的，超棒！');
+    }
+    if (st.streak >= 2) out.push('已经连着 ' + st.streak + ' 天有记录咯，好习惯正在一点点长出来～');
+    if (st.first && st.last && (st.last - st.first) > 3 * 3600000) {
+      out.push('从 ' + fmtTime(st.first) + ' 到 ' + fmtTime(st.last) + '，中间有好好休息吧？记得喝口水哦。');
+    }
+    out.push(['明天我还在这儿等你哦～', '去吃点好吃的犒劳一下自己吧！', '记得睡饱饱，脑袋才记得住哦～',
+              '你现在这个样子，真的超棒的！'][Math.floor(Math.random() * 4)]);
+    if (st.running) out.push('（这一段还在计时中，我先记到这儿啦～）');
+    return out;
+  }
+
+  /* 周 / 月的点评：小妹妹语气，喊「大哥哥」 */
+  function periodComment(st) {
+    if (st.kind === 'day') return dayComment(st);
+    var out = [], d = fmtDur(st.total);
+    var isW = st.kind === 'week';
+    var unit = isW ? '这周' : '这个月', prevUnit = isW ? '上周' : '上个月';
+
+    if (!st.list.length) {
+      out.push('大哥哥，' + unit + '还一笔都没记耶～');
+      out.push('没关系的！休息够了才跑得远嘛。要不要现在写一个小任务呀？我陪着大哥哥。');
+      if (st.streak > 0) out.push('前面已经连着 ' + st.streak + ' 天有记录咯，今天也别断掉好不好嘛～');
+      return out;
+    }
+    out.push('大哥哥' + unit + '一共学了 ' + d + '哦！');
+    if (isW) {
+      out.push(st.used.length >= 4
+        ? '有 ' + st.used.length + ' 天都坐到桌子前了，这个最最了不起啦～'
+        : '虽然只坐了 ' + st.used.length + ' 天，可每次都有在动哦，比一动不动好多啦！');
+    } else {
+      out.push('平均下来每天 ' + fmtDur(Math.round(st.avg)) + '，一点一点攒起来就是好多好多呀～');
+    }
+    if (st.prevTotal > 0) {
+      var diff = st.total - st.prevTotal, pct = Math.round(Math.abs(diff) / st.prevTotal * 100);
+      if (diff > 60000) out.push('比' + prevUnit + '多了 ' + fmtDur(diff) + '（+' + pct + '%），大哥哥在变厉害哦！');
+      else if (diff < -60000) out.push('比' + prevUnit + '少了一点点（-' + pct + '%），是不是有点忙呀？没事的，我们慢慢来～');
+      else out.push('跟' + prevUnit + '差不多，稳稳的，我更喜欢这样！');
+    }
+    if (st.bestDay) out.push('最厉害的是 ' + fmtMD(st.bestDay.ts) + '，那天一口气学了 ' + fmtDur(st.bestDay.ms) + '耶～');
+    var top = st.items[0];
+    if (top) out.push('花最多心思的是「' + top.task + '」，有 ' + fmtDur(top.ms) + '，它一定记住大哥哥了！');
+    if (st.streak >= 2) out.push('已经连着 ' + st.streak + ' 天有记录咯，好习惯正在一点点长出来～');
+    var nextWord = st.kind === 'month' ? '下个月' : (st.kind === 'week' ? '下周' : '明天');
+    out.push([nextWord + '我也在这儿等大哥哥哦～', '去吃点好吃的犒劳一下自己吧！',
+              '记得睡饱饱，脑袋才记得住哦～', '大哥哥现在这个样子，真的超棒的！'][Math.floor(Math.random() * 4)]);
+    if (st.running) out.push('（这一段还在计时中，我先记到这儿啦～）');
+    return out;
+  }
+
+  /* 分析和建议：全部由数据推出来，不写死结论 */
+  function periodAdvice(st) {
+    var out = [], isW = st.kind === 'week';
+    var unit = isW ? '这周' : '这个月', prevUnit = isW ? '上周' : '上个月';
+
+    if (st.prevTotal > 0) {
+      var diff = st.total - st.prevTotal, pct = Math.round(diff / st.prevTotal * 100);
+      out.push({ h: '📈 和' + prevUnit + '比',
+        t: unit + ' ' + fmtDur(st.total) + '，' + prevUnit + ' ' + fmtDur(st.prevTotal) + '，' +
+           (diff >= 0 ? '多了 ' : '少了 ') + fmtDur(Math.abs(diff)) + '（' + (diff >= 0 ? '+' : '') + pct + '%）。' +
+           (diff >= 0 ? '曲线是往上走的，保持住就好。' : '波动本身很正常，别让它连着往下走就行。') });
+    } else {
+      out.push({ h: '📊 总量', t: unit + '一共 ' + fmtDur(st.total) + '，' + prevUnit +
+        '还没有记录，所以这一份就是基线。下次再打开，我们就有得比了。' });
+    }
+
+    out.push({ h: '⏱ 节奏', t: '已经过去的 ' + st.days + ' 天里，有 ' + st.used.length + ' 天有记录，平均每天 ' +
+      fmtDur(Math.round(st.avg)) + (st.rest > 0 ? '，中间空了 ' + st.rest + ' 天。' : '，一天都没落下，这个很难得。') });
+
+    if (st.items.length >= 2) {
+      var top = st.items[0], share = Math.round(top.ms / st.total * 100);
+      var weak = st.items[st.items.length - 1];
+      var txt = '「' + top.task + '」占了 ' + share + '%，是' + unit + '的主线。' +
+        (share >= 70 ? '其他科目被压得比较扁，要不要给它们各留一个小小的固定时段？' : '整体分布还算均匀。');
+      if (st.items.length >= 3 && weak.ms / st.total < 0.1) {
+        txt += '「' + weak.task + '」只有 ' + fmtDur(weak.ms) + '，下次可以单独分它 15 分钟。';
+      }
+      out.push({ h: '📚 科目结构', t: txt });
+    }
+
+    var todSum = st.tod.reduce(function (a, b) { return a + b; }, 0);
+    if (todSum > 0) {
+      var names = ['凌晨', '上午', '下午', '晚上'], mi = 0;
+      st.tod.forEach(function (v, i) { if (v > st.tod[mi]) mi = i; });
+      out.push({ h: '🕐 时段分布', t: '有 ' + Math.round(st.tod[mi] / todSum * 100) + '% 的时间落在' + names[mi] + '。' +
+        (mi === 0 ? '凌晨的产出通常最不稳定，能挪到白天就挪一挪。'
+         : mi === 3 ? '晚上是你的主场，注意别熬得太深。'
+         : names[mi] + '是你的高效时段，难啃的科目可以排在那个时候。') });
+    }
+
+    /* 建议：按数据给，不按感觉给 */
+    var tips = [];
+    if (st.avg < 25 * 60000) {
+      tips.push('大哥哥，先把目标定小一点：每天 25 分钟。一周就是 2 小时 55 分，一个月接近 12 小时 30 分，' +
+        '比「有空再说」稳得多，我陪着大哥哥一天一天来。');
+    } else if (st.avg < 60 * 60000) {
+      tips.push('平均每天 ' + fmtDur(Math.round(st.avg)) + '，已经很不错啦。大哥哥想再往上走，' +
+        '先把「每天都开一次计时器」坐实，再加时长——顺序反了容易崩哦。');
+    } else {
+      tips.push('平均每天 ' + fmtDur(Math.round(st.avg)) + '，强度不低呢。大哥哥记得给自己排一个完全放空的半天，' +
+        '不然曲线会自己掉下来，我会心疼的。');
+    }
+    if (st.rest >= Math.max(2, Math.ceil(st.days * 0.3))) {
+      tips.push('空掉的天数有点多哦。大哥哥挑一个固定时间段（比如晚饭后 8 点），先只要求坐 15 分钟，' +
+        '把「断掉」这件事本身掐掉就好。');
+    }
+    if (st.longest && st.longest.ms >= 120 * 60000) {
+      tips.push('最长的一段有 ' + fmtDur(st.longest.ms) + '，一口气坐太久啦。大哥哥每 50 分钟站起来两分钟，' +
+        '后半段的效率会明显不一样。');
+    }
+    tips.forEach(function (t, i) {
+      out.push({ h: '💡 建议' + (tips.length > 1 ? ' ' + (i + 1) : ''), t: t, tip: true });
+    });
+    return out;
+  }
+
+  function renderDay() {
+    var st = periodStat(dayPeriod);
+    var P = PERIODS.filter(function (p) { return p.id === dayPeriod; })[0] || PERIODS[0];
+
+    $('#dayTabs').innerHTML = PERIODS.map(function (p) {
+      return '<button type="button" data-period="' + p.id + '"' +
+        (p.id === dayPeriod ? ' class="on"' : '') + '>' + p.name + '</button>';
+    }).join('');
+
+    var box = $('#dayChara');
+    if (!box.firstChild) {
+      var src = $('#whaleSlot .whale');
+      if (src) {
+        var c = src.cloneNode(true);
+        c.setAttribute('data-exp', 'cheer');
+        c.classList.remove('cheer');
+        box.appendChild(c);
+        void c.offsetWidth;
+        c.classList.add('cheer');
+      }
+    }
+
+    $('#dayTitle').textContent = P.title;
+    $('#dayDate').textContent = st.R.label;
+    $('#dayTotal').textContent = st.total > 0 ? fmtDur(st.total) : '0 分钟';
+    if (!st.list.length) {
+      $('#daySub').textContent = dayPeriod === 'day' ? '今天还是一张白纸，随时可以开始'
+        : (dayPeriod === 'week' ? '这周还是一张白纸，今天开始也算数' : '这个月还是一张白纸，现在开始也不晚');
+    } else if (dayPeriod === 'day') {
+      $('#daySub').textContent = st.list.length + ' 段 · ' + st.items.length + ' 个科目' + (st.running ? ' · 还在计时中' : '');
+    } else {
+      $('#daySub').textContent = st.list.length + ' 段 · ' + st.items.length + ' 个科目 · ' +
+        st.used.length + ' 天有记录' + (st.running ? ' · 还在计时中' : '');
+    }
+
+    $('#dayChips').innerHTML = [
+      [st.items.length, '个科目'],
+      [st.list.length, '段专注'],
+      dayPeriod === 'day' ? [st.streak, '天连着记'] : [st.used.length, '天有记录'],
+      dayPeriod === 'day'
+        ? [st.longest ? fmtDurShort(st.longest.ms) : '0m', '最长的一段']
+        : [st.total > 0 ? fmtDurShort(Math.round(st.avg)) : '0m', '平均每天']
+    ].map(function (x) { return '<div><b>' + x[0] + '</b><i>' + x[1] + '</i></div>'; }).join('') +
+      (st.autoN ? '<div class="dm-autonote">其中 ' + st.autoN + ' 段是到 23:59 自动替你收尾的</div>' : '');
+
+    $('#dayComment').innerHTML = periodComment(st).map(function (t) { return '<p>' + esc(t) + '</p>'; }).join('');
+
+    var body = '';
+    if (!st.list.length) {
+      body += '<div class="dm-span">' + (dayPeriod === 'day'
+        ? '写下这次想学什么，点「开始」，我就开始给你数啦～'
+        : '这段时间还没有记录。今天写一个小任务，' + (dayPeriod === 'week' ? '这周' : '这个月') + '就开张啦～') + '</div>';
+    } else {
+      /* 每天的小柱子 */
+      if (st.byDay.length > 1) {
+        var mx = Math.max.apply(null, st.byDay.map(function (x) { return x.ms; }).concat([1]));
+        body += '<div class="dm-sec">' + (dayPeriod === 'week' ? '这一周，每天学了多久' : '这一个月，每天学了多久') + '</div>';
+        body += '<div class="dm-days">' + st.byDay.map(function (x) {
+          var h = x.ms > 0 ? Math.max(4, Math.round(x.ms / mx * 54)) : 3;
+          var cls = x.ms <= 0 ? '' : (dayKey(x.ts) === todayKey() ? ' t' : ' f');
+          return '<i class="' + cls + '" style="height:' + h + 'px" title="' + fmtMD(x.ts) + ' · ' + fmtDur(x.ms) + '"></i>';
+        }).join('') + '</div>';
+        body += '<div class="dm-daylab">' + st.byDay.map(function (x) {
+          var lab = '';
+          if (dayPeriod === 'week') lab = WD[new Date(x.ts).getDay()];
+          else { var dd = new Date(x.ts).getDate(); lab = (dd === 1 || dd % 5 === 0) ? dd : ''; }
+          return '<span>' + lab + '</span>';
+        }).join('') + '</div>';
+      }
+      /* 科目占比 */
+      var max = st.items[0].ms || 1;
+      body += '<div class="dm-sec">' + (dayPeriod === 'day' ? '今天都学了什么' : '这段时间各科目占了多少') + '</div>';
+      body += st.items.slice(0, 7).map(function (it, i) {
+        return '<div class="dm-row"><div class="dm-top"><span>' + esc(it.task) + '</span><span>' + fmtDur(it.ms) +
+          ' · ' + Math.round(it.ms / st.total * 100) + '%</span></div>' +
+          '<div class="bar g' + ((i % 4) + 1) + '"><i style="width:' + Math.max(3, Math.round(it.ms / max * 100)) + '%"></i></div></div>';
+      }).join('');
+      if (st.items.length > 7) body += '<div class="dm-sec">…还有 ' + (st.items.length - 7) + ' 个科目</div>';
+
+      if (dayPeriod === 'day') {
+        body += '<div class="dm-span">今天第一段从 ' + fmtTime(st.first) + ' 开始，最后一段到 ' + fmtTime(st.last) +
+          '，前后跨度 ' + fmtDurShort(st.last - st.first) + '。</div>';
+      } else {
+        /* 时段分布 */
+        var ts2 = st.tod.reduce(function (a, b) { return a + b; }, 0);
+        if (ts2 > 0) {
+          body += '<div class="dm-sec2">什么时候在学</div>';
+          body += '<div class="dm-tod">' + ['凌晨', '上午', '下午', '晚上'].map(function (nm, i) {
+            return '<div><b>' + Math.round(st.tod[i] / ts2 * 100) + '%</b><i>' + nm + '</i></div>';
+          }).join('') + '</div>';
+        }
+        /* 分析和建议 */
+        var adv = periodAdvice(st);
+        if (adv.length) {
+          body += '<div class="dm-sec2">📊 分析和建议</div>';
+          body += '<div class="adv">' + adv.map(function (a) {
+            return '<div class="a' + (a.tip ? ' tip' : '') + '"><b>' + esc(a.h) + '</b><p>' + esc(a.t) + '</p></div>';
+          }).join('') + '</div>';
+        }
+        body += '<div class="dm-span">一共坐了 ' + st.list.length + ' 段，最长的一段在 ' + fmtMD(st.longest.start) +
+          '，有 ' + fmtDur(st.longest.ms) + '。</div>';
+      }
+    }
+    $('#dayBody').innerHTML = body;
+  }
+
+  function openDay() { dayPeriod = 'day'; renderDay(); $('#dayModal').hidden = false; }
+  function closeDay() { $('#dayModal').hidden = true; }
+
+  /* ===================== 渲染 ===================== */
+  function render() {
+    var running = isRunning();
+    var has = !!S.current;
+    var ms = elapsed(S.current);
+
+    $('#clock').textContent = fmtClock(ms);
+    $('#clock').classList.toggle('paused', has && !running);
+
+    var dot = $('#stateDot');
+    dot.className = 'state-dot' + (running ? ' run' : (has ? ' pause' : ''));
+    $('#stateText').textContent = running ? '计时中' : (has ? '已暂停' : '未开始');
+
+    var inp = $('#taskInput');
+    if (has) { inp.value = S.current.task; inp.disabled = true; }
+    else { inp.disabled = false; if (!inp.value && S.lastTask) inp.value = ''; }
+
+    $('#btnStart').textContent = has ? (running ? '计时中' : '继续') : '开始';
+    $('#btnStart').disabled = running;
+    $('#btnPause').disabled = !running;
+    $('#btnStop').disabled = !has;
+    $('#btnSwitch').disabled = !has;
+
+    var today = sessionList(true).filter(function (s) { return dayKey(s.start) === todayKey(); });
+    var todayMs = today.reduce(function (a, s) { return a + s.ms; }, 0);
+    $('#todayText').textContent = fmtDur(todayMs);
+
+    document.title = running ? ('▶ ' + fmtClock(ms) + ' · ' + S.current.task) : '学习计时器';
+    renderStats();
+  }
+
+  /* ===================== 主循环 ===================== */
+  setInterval(function () {
+    var closed = autoCloseIfNeeded();        // 跨过 23:59 就地收尾
+    if (closed) { announceAutoClose(closed); return; }
+    if (!S.current) return;
+    if (isRunning()) {
+      var ms = elapsed(S.current);
+      $('#clock').textContent = fmtClock(ms);
+      var today = sessionList(true).filter(function (s) { return dayKey(s.start) === todayKey(); });
+      $('#todayText').textContent = fmtDur(today.reduce(function (a, s) { return a + s.ms; }, 0));
+      document.title = '▶ ' + fmtClock(ms) + ' · ' + S.current.task;
+      // 每隔一段时间换一句名言
+      var gap = (S.settings.interval || 5) * 60000;
+      if (Date.now() - (S.lastQuoteAt || 0) >= gap) newQuote();
+    }
+  }, 250);
+  setInterval(function () { if (tab === 'today') renderStats(); }, 30000);
+
+  /* ===================== 事件 ===================== */
+  function bind() {
+    whale = $('#whaleSlot .whale');
+    quoteBox = $('#quoteBox'); quoteText = $('#quoteText'); quoteBy = $('#quoteBy');
+
+    $('#btnStart').addEventListener('click', function () {
+      SFX.click();
+      if (S.current) resumeTimer(); else startTimer();
+    });
+    $('#btnPause').addEventListener('click', function () { SFX.click(); pauseTimer(); });
+    $('#btnStop').addEventListener('click', function () { SFX.click(); stopTimer(); });
+    $('#btnSwitch').addEventListener('click', function () { SFX.click(); switchTask(); });
+    $('#btnDay').addEventListener('click', function () { SFX.click(); openDay(); });
+    $('#dayModal').addEventListener('click', function (e) {
+      var tb = e.target.closest('#dayTabs button');
+      if (tb) {
+        var id = tb.getAttribute('data-period');
+        if (id && id !== dayPeriod) { SFX.click(); dayPeriod = id; renderDay(); }
+        return;
+      }
+      if (e.target.closest('#dayAgain')) {
+        SFX.click(); closeDay();
+        var inp = $('#taskInput');
+        if (!S.current) { inp.focus(); inp.select(); }
+        return;
+      }
+      if (e.target.closest('#dayClose') || e.target.closest('[data-close]')) { SFX.click(); closeDay(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!$('#bfModal').hidden) closeBackfill();
+      else if (!$('#dayModal').hidden) closeDay();
+    });
+
+    /* ---- 补记 ---- */
+    $('#btnBackfill').addEventListener('click', function () { SFX.click(); openBackfill(); });
+    $('#bfModal').addEventListener('click', function (e) {
+      var chip = e.target.closest('#bfChips button');
+      if (chip) {
+        SFX.click();
+        var v = chip.getAttribute('data-min');
+        $('#bfMin').value = v;
+        Array.prototype.forEach.call($('#bfChips').children, function (b) { b.classList.toggle('on', b === chip); });
+        return;
+      }
+      var db = e.target.closest('#bfDay button');
+      if (db) {
+        SFX.click();
+        bfDay = parseInt(db.getAttribute('data-d'), 10) || 0;
+        Array.prototype.forEach.call($('#bfDay').children, function (b) { b.classList.toggle('on', b === db); });
+        return;
+      }
+      if (e.target.closest('#bfOk')) { SFX.click(); doBackfill(); return; }
+      if (e.target.closest('[data-close]')) { SFX.click(); closeBackfill(); }
+    });
+    $('#bfMin').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); doBackfill(); }
+    });
+    $('#bfTask').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#bfMin').focus(); }
+    });
+    quoteBox.addEventListener('click', function () { SFX.click(); newQuote(); });
+
+    $('#taskInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (!S.current) { SFX.click(); startTimer(); } }
+    });
+    $('#taskInput').addEventListener('input', function () { S.lastTask = this.value; });
+
+    $('#soundBtn').addEventListener('click', function () {
+      S.settings.sound = !S.settings.sound; save();
+      this.classList.toggle('off', !S.settings.sound);
+      toast(S.settings.sound ? '音效已开启' : '音效已关闭');
+      if (S.settings.sound) SFX.click();
+    });
+    $('#setBtn').addEventListener('click', function () {
+      SFX.click();
+      $('#settings').classList.toggle('on');
+      this.classList.toggle('off', !$('#settings').classList.contains('on'));
+    });
+
+    document.querySelectorAll('.tabs button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        SFX.click();
+        tab = b.dataset.tab;
+        document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        renderStats();
+      });
+    });
+
+    $('#list').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-del]');
+      if (b) {
+        var id = b.dataset.del;
+        S.sessions = S.sessions.filter(function (s) { return s.id !== id; });
+        save(); render(); toast('已删除这条记录');
+        return;
+      }
+      var r = e.target.closest('[data-resume]');
+      if (r) { SFX.click(); resumeTask(r.getAttribute('data-resume')); }
+    });
+
+    var si = $('#setInterval');
+    si.value = String(S.settings.interval || 5);
+    si.addEventListener('change', function () {
+      S.settings.interval = parseInt(this.value, 10) || 5;
+      S.lastQuoteAt = Date.now();
+      save(); toast('名言提醒改为每 ' + S.settings.interval + ' 分钟');
+    });
+
+    var sac = $('#setAutoClose');
+    sac.checked = S.settings.autoClose !== false;
+    sac.addEventListener('change', function () {
+      S.settings.autoClose = this.checked;
+      save();
+      toast(this.checked ? '已开启：每天 23:59 自动替你收尾' : '已关闭自动收尾，记得自己按结束哦', this.checked ? 'good' : 'warn');
+    });
+
+    $('#btnExport').addEventListener('click', function () {
+      var data = JSON.stringify({ v: 1, exportedAt: new Date().toISOString(), sessions: S.sessions }, null, 2);
+      var blob = new Blob([data], { type: 'application/json' });
+      var a = document.createElement('a');
+      var d = new Date();
+      a.href = URL.createObjectURL(blob);
+      a.download = '学习记录-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+      toast('已导出备份文件', 'good');
+    });
+    $('#btnImport').addEventListener('click', function () { $('#fileInput').click(); });
+    $('#fileInput').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () {
+        try {
+          var o = JSON.parse(r.result);
+          var arr = Array.isArray(o) ? o : (o.sessions || []);
+          arr = arr.filter(function (s) { return s && s.task && typeof s.ms === 'number'; });
+          if (!arr.length) { toast('这个文件里没有可导入的记录', 'warn'); return; }
+          if (!confirm('导入 ' + arr.length + ' 条记录？\n将与现有记录合并（不会覆盖）。')) return;
+          var ids = {};
+          S.sessions.forEach(function (s) { ids[s.id] = 1; });
+          var add = 0;
+          arr.forEach(function (s) {
+            if (!s.id) s.id = 's' + (s.end || Date.now()) + Math.random().toString(36).slice(2, 6);
+            if (!ids[s.id]) { S.sessions.push({ id: s.id, task: s.task, start: s.start || s.end, end: s.end || s.start, ms: s.ms }); add++; }
+          });
+          save(); render(); toast('已导入 ' + add + ' 条记录', 'good');
+        } catch (e) { toast('文件格式不对，导入失败', 'warn'); }
+      };
+      r.readAsText(f);
+      this.value = '';
+    });
+
+    $('#btnClearAll').addEventListener('click', function () {
+      if (!confirm('确定清空全部学习记录吗？\n（进行中的计时也会一起结束，此操作不可恢复）')) return;
+      S.sessions = []; S.current = null;
+      save(); render(); toast('记录已清空');
+    });
+
+    /* 关窗口 = 暂停。以前是「关掉也接着算」，但那样每次重开都会把
+       关着的那段时间又加一遍（重复计时），跨夜更是灾难。 */
+    window.addEventListener('beforeunload', function () {
+      if (S.current && S.current.resumeAt) {
+        S.current.accum = elapsed(S.current);
+        S.current.resumeAt = null;
+        S.current.paused = true;
+      }
+      save();
+    });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+
+    // 背景气泡
+    var bb = $('#bubbles');
+    for (var i = 0; i < 10; i++) {
+      var b = document.createElement('div');
+      b.className = 'bub';
+      var sz = 5 + Math.random() * 14;
+      b.style.width = sz + 'px'; b.style.height = sz + 'px';
+      b.style.left = (Math.random() * 100) + 'vw';
+      b.style.animationDuration = (11 + Math.random() * 14) + 's';
+      b.style.animationDelay = (-Math.random() * 18) + 's';
+      bb.appendChild(b);
+    }
+  }
+
+  /* ===================== 启动 ===================== */
+  function boot() {
+    bind();
+    $('#soundBtn').classList.toggle('off', !S.settings.sound);
+    if (!S.current && S.lastTask) $('#taskInput').value = S.lastTask;
+
+    /* 同一个浏览器里可能开了不止一个窗口（应用窗口 + 标签页），
+       别的窗口改了存档就跟着同步，免得两边数据各说各话。 */
+    window.addEventListener('storage', function (e) {
+      if (!e || e.key !== KEY || !e.newValue) return;
+      try { applyData(JSON.parse(e.newValue)); render(); } catch (err) { }
+    });
+
+    // 跨天的旧计时，先按 23:59 收尾
+    var stale = autoCloseIfNeeded();
+
+    // 上次没结束的计时：关窗口时已经当作暂停，这里不再自动续跑
+    if (S.current) {
+      if (S.current.resumeAt) {                  // 兼容旧存档：把还在走的结算成暂停
+        S.current.accum = elapsed(S.current);
+        S.current.resumeAt = null;
+        S.current.paused = true;
+        save();
+      }
+      setExp(baseExp());
+      var pendingTask = S.current.task, pendingMs = S.current.accum || 0;
+      setTimeout(function () {
+        toast('上次的「' + pendingTask + '」还没结束，先停在 ' + fmtDur(pendingMs) + '，点「继续」接着记', 'good');
+      }, 500);
+    } else {
+      setExp('normal');
+    }
+
+    if (stale) setTimeout(function () { announceAutoClose(stale); }, 900);
+    if (S.quoteIdx < 0) newQuote(true);
+    else { quoteText.textContent = '「' + QUOTES[S.quoteIdx][0] + '」'; quoteBy.textContent = '—— ' + QUOTES[S.quoteIdx][1]; }
+    render();
+    window.__READY__ = true;      // 自动化测试/出图脚本等这个标志，确保事件已绑定
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+
+  window.__TIMER__ = { state: S, elapsed: elapsed, save: save, render: render,
+                       dayStat: dayStat, openDay: openDay, closeDay: closeDay,
+                       periodStat: periodStat, periodRange: periodRange, periodAdvice: periodAdvice,
+                       renderDay: renderDay, autoClose: autoCloseIfNeeded, dayEndOf: dayEndOf,
+                       openBackfill: openBackfill, closeBackfill: closeBackfill, doBackfill: doBackfill };
+})();
+</script>
+</body>
+</html>
